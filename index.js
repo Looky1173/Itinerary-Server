@@ -193,7 +193,7 @@ app.get('/auth/begin', (req, res) => {
     if (req.get('host') == 'localhost:8081') {
         redirect = 'localhost:8081/auth/handle';
     } else {
-        redirect = `${process.env.BACKEND_URL}/auth/handle`;
+        redirect = `${process.env.BACKEND_URL.replace(/(^\w+:|^)\/\//, '')}/auth/handle`;
     };
     redirect = Buffer.from(redirect).toString('base64');
     res.redirect(`https://fluffyscratch.hampton.pw/auth/getKeys/v2?redirect=${redirect}`);
