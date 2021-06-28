@@ -29,7 +29,7 @@ const port = 8081;
 
 let cors = require('cors');
 
-const whitelist = ['http://localhost:3000', 'http://localhost:8081'];
+const whitelist = ['http://localhost:3000', 'http://localhost:8081', process.env.FRONTEND_URL, process.env.BACKEND_URL];
 const frontendURL = process.env.FRONTEND_URL;
 
 const corsOptions = {
