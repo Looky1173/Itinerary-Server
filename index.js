@@ -10,6 +10,7 @@
 /*
  * TODO:
  *   - Handle bad requests such as ones with plain % parameters
+ *   - Add CRUD endoints for Scratch Game Jams
 */
 
 require('dotenv').config();
@@ -18,11 +19,19 @@ const crypto = require('crypto');
 
 const express = require('express');
 
-const db = require('monk')(process.env.MONGO_URL);
-const users = db.get('users')
-const persistedSessions = db.get('sessions');
+// Import Mongoose and the `Users` and `Sessions` models
+const mongoose = require('mongoose');
+const Users = require('./models/users');
+const Sessions = require('./models/sessions');
 
-users.createIndex('name', { unique: true })
+// Make sure to not use deprecated features
+mongoose.set('useNewUrlParser', true);
+mongoose.set('useFindAndModify', false);
+mongoose.set('useCreateIndex', true);
+mongoose.set('useUnifiedTopology', true);
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URL);
 
 const app = express();
 const port = 8081;
@@ -45,16 +54,14 @@ const corsOptions = {
 // Use built-in middleware to recognize incoming request objects as JSON objects
 app.use(express.json());
 
+// Default response to root queries
 app.get('/', async (req, res) => {
     res.json({ meta: { version: 'v1', time: new Date() } });
-    // res.redirect(frontendURL);
 });
 
-app.options('/api/users', cors(corsOptions)) // enable pre-flight request for user list
+app.options('/api/users', cors(corsOptions));
 
 app.get('/api/users', cors(corsOptions), async (req, res) => {
-    // const page = parseInt(req.query.page) || 0;
-    // let userList = await users.find({}, { sort: { _id: -1 }, limit: 15, skip: page * 15 })
     if (!req.headers.authorization) {
         res.json({ error: 'Authentication needed!' });
     } else {
@@ -69,7 +76,7 @@ app.get('/api/users', cors(corsOptions), async (req, res) => {
         if (!sessionUser.admin) {
             return res.json({ error: `Only admins can get a list of users!` });
         }
-        let userList = await users.find({}, { sort: { "meta.updated": -1, _id: -1 } }); // TODO: pagination (see above)
+        let userList = await Users.find({}).sort({ "meta.updated": -1, _id: -1 }).exec();
         res.json(userList);
     }
 })
@@ -95,7 +102,7 @@ app.put('/api/user/:name', cors(), async (req, res) => {
         let user = await getUserData(req.params.name);
 
         if (user) {
-            if (user.banned && !sessionUser.admin) return res.status(403).json({ error: {status: 403, code: "banned", detail: "You are banned from Itinerary!"} });
+            if (user.banned && !sessionUser.admin) return res.status(403).json({ error: { status: 403, code: "banned", detail: "You are banned from Itinerary!" } });
             if (!req.params) {
                 return res.json({ error: { status: 400, code: 'userAlreadyExists', detail: 'This user already exists. If you are trying to update their account, please don\'t forget to send the necessary request parameters!' } });
             }
@@ -104,21 +111,21 @@ app.put('/api/user/:name', cors(), async (req, res) => {
             if (sessionUser.admin) {
                 // Ban user
                 if (req.body.banned) {
-                    await users.update({ name: user.name }, { $set: { banned: req.body.banned } });
-                    await persistedSessions.remove({ name: user.name });
+                    await Users.updateOne({ name: user.name }, { $set: { banned: req.body.banned } });
+                    await Sessions.deleteOne({ name: user.name });
                 } else {
-                    await users.update({ name: user.name }, { $unset: { banned: "" } });
+                    await Users.updateOne({ name: user.name }, { $unset: { banned: "" } });
                 };
 
                 // Promote/demote user
                 if (req.body.admin) {
-                    await users.update({ name: user.name }, { $set: { admin: req.body.admin } });
+                    await Users.updateOne({ name: user.name }, { $set: { admin: req.body.admin } });
                 } else {
-                    await users.update({ name: user.name }, { $unset: { admin: "" } });
+                    await Users.updateOne({ name: user.name }, { $unset: { admin: "" } });
                 };
             };
 
-            await users.update({ name: user.name }, { $set: { "meta.updatedBy": sessionUser.name, "meta.updated": now.toISOString() } });
+            await Users.updateOne({ name: user.name }, { $set: { "meta.updatedBy": sessionUser.name, "meta.updated": now.toISOString() } });
 
             res.json({ ok: 'User updated!' });
         } else {
@@ -135,7 +142,7 @@ app.put('/api/user/:name', cors(), async (req, res) => {
 
                 let now = new Date();
 
-                await users.insert({
+                await Users.create({
                     name: scratchData.username,
                     meta: {
                         updated: now.toISOString(),
@@ -175,8 +182,8 @@ app.delete('/api/user/:name', cors(), async (req, res) => {
         return res.json({ error: "This user could not be deleted because it doesn't exist!" });
     };
 
-    await persistedSessions.remove({ name: user.name });
-    await users.remove({ name: user.name });
+    await Sessions.deleteOne({ name: user.name });
+    await Users.deleteOne({ name: user.name });
     res.json({ ok: 'This user has been successfully deleted!' });
 });
 
@@ -220,7 +227,7 @@ app.get('/auth/handle', async (req, res) => {
 
         if (!foundUser) {
             let now = new Date()
-            foundUser = await users.insert({
+            foundUser = await Users.create({
                 name: scratchData.username,
                 meta: {
                     updated: now.toISOString(),
@@ -250,7 +257,7 @@ app.get('/auth/info', cors(corsOptions), async (req, res) => {
         let session = findSessionByOneTimeToken(req.query.token)
         if (session) {
             res.json({ name: session.name, token: session.token })
-            await persistedSessions.update({ oneTimeToken: req.query.token }, { $set: { oneTimeToken: null } })
+            await Sessions.updateOne({ oneTimeToken: req.query.token }, { $set: { oneTimeToken: null } })
             session.oneTimeToken = null
         } else {
             res.json({ error: 'No session found! Invalid or expired one time token.' })
@@ -284,11 +291,11 @@ app.get('/auth/me', cors(corsOptions), async (req, res) => {
     } else {
         let session = findSession(req.headers.authorization);
         if (!session) {
-            return res.status(403).json({ error: { status: 403, code: 'invalidAuth', detail: 'Invalid auth!'} });
+            return res.status(403).json({ error: { status: 403, code: 'invalidAuth', detail: 'Invalid auth!' } });
         }
         let user = await getUserData(session.name);
-        if(user.banned){
-            res.status(403).json({ error: {status: 403, code: "banned", detail: "You are banned from Itinerary!", name: user.name} });
+        if (user.banned) {
+            res.status(403).json({ error: { status: 403, code: "banned", detail: "You are banned from Itinerary!", name: user.name } });
         }
         user ? res.json(user) : res.json({ error: "no user found.. this shouldn't happen" });
     }
@@ -307,7 +314,7 @@ function getUserData(name) {
     var regexName = "^" + escapeRegExp(name) + "$";
     return new Promise(async (resolve, reject) => {
         try {
-            var user = await users.findOne({
+            var user = await Users.findOne({
                 name: { $regex: new RegExp(regexName, "i") }
             });
             resolve(user);
@@ -321,7 +328,7 @@ function getUserData(name) {
 let sessions = [];
 
 (async () => {
-    sessions = await persistedSessions.find({})
+    sessions = await Sessions.find({})
 })();
 
 async function generateToken() {
@@ -345,7 +352,7 @@ async function addSession(token, name, oneTimeToken, time = false) {
     // Defaults to 6 hours
 
     sessions.push({ name, token, oneTimeToken });
-    await persistedSessions.insert({ name, token, oneTimeToken });
+    await Sessions.create({ name, token, oneTimeToken });
 
     if (time) {
         setTimeout(() => {
@@ -359,7 +366,7 @@ async function removeSession(token) {
     sessions = sessions.filter(obj => {
         return obj.token !== token;
     })
-    await persistedSessions.remove({ token });
+    await Sessions.deleteOne({ token });
 }
 
 function findSession(token) {
