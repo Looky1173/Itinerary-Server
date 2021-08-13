@@ -4,7 +4,7 @@ const SessionsSchema = new mongoose.Schema({
     name: { type: String, required: true },
     token: { type: String, required: true },
     oneTimeToken: { type: String, required: false },
-}, { collection: 'sessions' });
+}, { collection: 'sessions', versionKey: false });
 
 const model = mongoose.model('SessionsModel', SessionsSchema);
 
