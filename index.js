@@ -36,7 +36,11 @@ mongoose.set('useCreateIndex', true);
 mongoose.set('useUnifiedTopology', true);
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGO_URL);
+mongoose.connect(process.env.MONGO_URL).then(() => {
+    console.log('Connected to MongoDB!');
+}).catch((error) => {
+    console.log(`Failed to connect to MongoDB! Error: ${error}`);
+});
 
 const app = express();
 const port = 8081;
