@@ -1110,13 +1110,15 @@ function getUserData(name) {
             var user = await Users.findOne({
                 name: { $regex: new RegExp(regexName, 'i') },
             });
-            user.isManager = async (jam) => {
-                if ((await Managers.countDocuments({ jam: jam, name: user?.name })) > 0) {
-                    return true;
-                } else {
-                    return false;
-                }
-            };
+            if (user) {
+                user.isManager = async (jam) => {
+                    if ((await Managers.countDocuments({ jam: jam, name: user?.name })) > 0) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                };
+            }
             resolve(user);
         } catch (error) {
             reject(Error(error));
