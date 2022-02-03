@@ -257,18 +257,30 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
 
                 let sessionUser = await getUserData(session.name);
 
-                if (!sessionUser.admin) {
-                    return res.json({ error: `Only admins can view the details of upcoming jams!` });
+                if (!sessionUser.admin && !(await sessionUser.isManager(req.params.jam))) {
+                    return res.json({ error: `Only admins and managers can view the details of upcoming jams!` });
                 }
             }
         } else {
+            let sessionUser = null;
+            if (req.headers.authorization) {
+                let session = findSession(req.headers.authorization);
+
+                if (session) {
+                    sessionUser = await getUserData(session.name);
+                }
+            }
+
             for (var i = 0; i < jamsList.length; i++) {
-                if (new Date(jamsList?.[i]?.['dates']?.['start']) > new Date()) {
-                    // This jam is scheduled to start in the future. Therefore, we hide all content that could allow users to get an unfair head start
+                if (new Date(jamsList?.[i]?.['dates']?.['start']) > new Date() && jamsList?.[i]?.['options']?.['enableMystery'] === true) {
                     jamsList[i]['mystery'] = true;
-                    delete jamsList[i]['content']['body'];
-                    delete jamsList[i]['content']['colors'];
-                    //delete jamsList[i]['content']['headerImage'];
+
+                    if (sessionUser ? !sessionUser.admin && !(await sessionUser.isManager(jamsList?.[i]?.['slug'])) : true) {
+                        // This jam is scheduled to start in the future. Therefore, we hide all content that could allow users to get an unfair head start
+                        delete jamsList[i]['content']['body'];
+                        delete jamsList[i]['content']['colors'];
+                        //delete jamsList[i]['content']['headerImage'];
+                    }
                 } else {
                     jamsList[i]['mystery'] = false;
                 }
@@ -300,21 +312,32 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
 
                     let sessionUser = await getUserData(session.name);
 
-                    if (!sessionUser.admin) {
-                        return res.json({ error: `Only admins can view the details of upcoming jams!` });
+                    if (!sessionUser.admin && !(await sessionUser.isManager(req.params.jam))) {
+                        return res.json({ error: `Only admins and managers can view the details of upcoming jams!` });
                     }
                 }
             } else {
-                /*
-                if (new Date(jam['dates']['start']) > new Date()) {
-                    // This jam is scheduled to start in the future. Therefore, we hide all content that could allow users to get an unfair head start
+                let sessionUser = null;
+                if (req.headers.authorization) {
+                    let session = findSession(req.headers.authorization);
+
+                    if (session) {
+                        sessionUser = await getUserData(session.name);
+                    }
+                }
+
+                if (new Date(jam['dates']['start']) > new Date() && jam?.['options']?.['enableMystery'] === true) {
                     jam['mystery'] = true;
-                    delete jam['content']['body'];
-                    delete jam['content']['colors'];
-                    delete jam['content']['headerImage'];
+
+                    if (sessionUser ? !sessionUser.admin && !(await sessionUser.isManager(jam['slug'])) : true) {
+                        // This jam is scheduled to start in the future. Therefore, we hide all content that could allow users to get an unfair head start
+                        delete jam['content']['body'];
+                        delete jam['content']['colors'];
+                        //delete jam['content']['headerImage'];
+                    }
                 } else {
                     jam['mystery'] = false;
-                }*/
+                }
             }
 
             return res.json(jam);
@@ -387,7 +410,7 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
                     body: req?.body?.content?.body,
                 },
                 options: {
-                    showSubmissionsBeforeVoting: req?.body?.options?.showSubmissionsBeforeVoting,
+                    enableMystery: req?.body?.options?.enableMystery,
                 },
                 meta: {
                     updated: now,
@@ -402,7 +425,7 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
             if (!jam) {
                 return res.status(404).json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
             }
-            if ((updateQuery.dates.end && new Date(updateQuery.dates.end).toISOString()) > now) {
+            if ((updateQuery?.dates?.end && new Date(updateQuery.dates.end).toISOString()) > now) {
                 // If the jam is ongoing, clear any winners
                 await Projects.updateMany({ jam: req.params.jam, $or: [{ selected: true }, { selectedByTheCommunity: true }] }, { selected: false, selectedByTheCommunity: false });
             }

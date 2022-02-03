@@ -33,7 +33,7 @@ const JamsSchema = new mongoose.Schema(
             body: { type: String, required: true },
         },
         options: {
-            showSubmissionsBeforeVoting: { type: Boolean, default: false },
+            enableMystery: { type: Boolean, default: false },
         },
         meta: {
             updated: { type: Date, required: false },
