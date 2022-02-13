@@ -239,10 +239,13 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
 
     if (!req.params.jam) {
         // If we are NOT looking for a specific jam
-        const limit = req.query.limit;
+        const limit = req.query.limit || 40;
+        let offset = req.query.offset || 0;
+        if (offset < 0) offset = 0;
 
         // Get an array of all jams
-        let jamsList = await Jams.find({}).sort({ 'dates.start': 'descending' }).lean().exec();
+        let jamsCount = await Jams.countDocuments({});
+        let jamsList = await Jams.find({}).sort({ 'dates.start': 'descending' }).skip(Number(offset)).limit(Number(limit)).lean().exec();
 
         // Loop through all jams and hide the title and main theme of jams that didn't start yet
         if (bypassMystery) {
@@ -286,14 +289,7 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
                 }
             }
         }
-
-        if (!limit) {
-            // Return all jams
-            res.json(jamsList);
-        } else {
-            // Return a maximum of `limit` jams
-            res.json(jamsList.slice(0, limit));
-        }
+        res.json({ total: jamsCount, jams: jamsList });
     } else {
         // If we are looking for a specific jam
         let jam = await Jams.findOne({ slug: req.params.jam }).lean();
