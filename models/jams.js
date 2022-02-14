@@ -14,7 +14,8 @@ mongoose.plugin(slug);
 const JamsSchema = new mongoose.Schema(
     {
         name: { type: String, required: true },
-        slug: { type: String, slug: 'name', unique: true, transform: (name) => getSlug(name, options) == 'new' ? 'jam-' + name : name },
+        slug: { type: String, slug: 'name', unique: true, transform: (name) => (getSlug(name, options) == 'new' ? 'jam-' + name : name) },
+        featured: { type: Boolean, required: false },
         dates: {
             start: { type: Date, required: false },
             end: { type: Date, required: false },

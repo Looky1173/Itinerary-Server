@@ -243,9 +243,19 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
         let offset = req.query.offset || 0;
         if (offset < 0) offset = 0;
 
+        const { featured } = req.query;
+        let filterQuery = {};
+        if (featured != null || featured != undefined) {
+            if (featured == 'true') {
+                filterQuery.featured = true;
+            } else {
+                filterQuery.featured = { $ne: true };
+            }
+        }
+
         // Get an array of all jams
         let jamsCount = await Jams.countDocuments({});
-        let jamsList = await Jams.find({}).sort({ 'dates.start': 'descending' }).skip(Number(offset)).limit(Number(limit)).lean().exec();
+        let jamsList = await Jams.find(filterQuery).sort({ 'dates.start': 'descending' }).skip(Number(offset)).limit(Number(limit)).lean().exec();
 
         // Loop through all jams and hide the title and main theme of jams that didn't start yet
         if (bypassMystery) {
@@ -920,6 +930,54 @@ app.delete('/api/jams/:jam/winners/', cors(), async (req, res) => {
     await computeCommunitySelectedWinner(req.params.jam);
 
     return res.json({ ok: 'The requested project was stripped of the winner status.' });
+});
+
+app.options('/api/jams/:jam/feature/', cors(corsOptions));
+
+app.put('/api/jams/:jam/feature/', cors(), async (req, res) => {
+    // Verify that the `Authorization` header was sent with the request
+    if (!req.headers.authorization) {
+        return res.json({ error: 'You need auth!' });
+    }
+
+    // Check whether the session is valid
+    let session = findSession(req.headers.authorization);
+
+    if (!session) {
+        return res.json({ error: 'Invalid auth!' });
+    }
+
+    let sessionUser = await getUserData(session.name);
+    if (!sessionUser.admin) {
+        return res.status(403).json({ error: { status: 403, code: 'insufficientPermissions', detail: 'This action can only be performed by an admin!' } });
+    }
+
+    await Jams.updateOne({ slug: req.params.jam }, { featured: true });
+
+    return res.json({ ok: 'The requested jam was featured.' });
+});
+
+app.delete('/api/jams/:jam/feature/', cors(), async (req, res) => {
+    // Verify that the `Authorization` header was sent with the request
+    if (!req.headers.authorization) {
+        return res.json({ error: 'You need auth!' });
+    }
+
+    // Check whether the session is valid
+    let session = findSession(req.headers.authorization);
+
+    if (!session) {
+        return res.json({ error: 'Invalid auth!' });
+    }
+
+    let sessionUser = await getUserData(session.name);
+    if (!sessionUser.admin) {
+        return res.status(403).json({ error: { status: 403, code: 'insufficientPermissions', detail: 'This action can only be performed by an admin!' } });
+    }
+
+    await Jams.updateOne({ slug: req.params.jam }, { featured: false });
+
+    return res.json({ ok: 'The requested jam was unfeatured.' });
 });
 
 async function computeCommunitySelectedWinner(jam) {
