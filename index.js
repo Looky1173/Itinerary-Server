@@ -441,7 +441,7 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
                 if (updatedDocument) {
                     if (updatedDocument.slug != req.params.jam) {
                         // "Re-link" managers to the game jam if its slug was modified
-                        Managers.updateMany({ jam: req.params.jam }, { jam: updatedDocument.slug });
+                        Managers.updateMany({ jam: req.params.jam }, { $set: { jam: updatedDocument.slug } });
                     }
                     return res.status(200).json({ ok: { newSlug: updatedDocument.slug } });
                 } else {
