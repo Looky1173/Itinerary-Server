@@ -439,6 +439,10 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
             // Update the jam and return the new slug
             await Jams.findOneAndUpdate({ slug: req.params.jam }, { $set: updateQuery }, { new: true }).then((updatedDocument) => {
                 if (updatedDocument) {
+                    if (updatedDocument.slug != req.params.jam) {
+                        // "Re-link" managers to the game jam if its slug was modified
+                        Managers.updateMany({ jam: req.params.jam }, { jam: updatedDocument.slug });
+                    }
                     return res.status(200).json({ ok: { newSlug: updatedDocument.slug } });
                 } else {
                     return res.status(404).json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
