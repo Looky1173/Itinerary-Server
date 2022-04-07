@@ -17,9 +17,7 @@
  *   - Better and more consistent error handling
  *   - Add middleware for blocking requests from banned users
  *   - Validate game jam dates before saving them
- *   - Always send status code, for every request
  *   - Implement better pagination for game jams and projects
- *   - Prevent submissions before a game jam starts of after it ends
  *   - Support ordering projects by various criteria
  */
 
@@ -79,7 +77,7 @@ app.use(express.json());
 
 // Default response to root queries
 app.get('/', async (req, res) => {
-    res.json({ meta: { version: 'v1', time: new Date() } });
+    res.status(200).json({ meta: { version: 'v1', time: new Date() } });
 });
 
 /*
@@ -89,21 +87,21 @@ app.options('/api/users', cors(corsOptions));
 
 app.get('/api/users', cors(corsOptions), async (req, res) => {
     if (!req.headers.authorization) {
-        res.json({ error: 'Authentication needed!' });
+        res.status(401).json({ error: 'Authentication needed!' });
     } else {
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let sessionUser = await getUserData(session.name);
 
         if (!sessionUser.admin) {
-            return res.json({ error: `Only admins can get a list of users!` });
+            return res.status(403).json({ error: `Only admins can get a list of users!` });
         }
         let userList = await Users.find({}).sort({ 'meta.updated': -1, _id: -1 }).exec();
-        res.json(userList);
+        res.status(200).json(userList);
     }
 });
 
@@ -111,18 +109,18 @@ app.options('/api/user/:name', cors(corsOptions));
 
 app.put('/api/user/:name', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        res.json({ error: 'You need auth!' });
+        res.status(401).json({ error: 'You need auth!' });
     } else {
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let sessionUser = await getUserData(session.name);
 
         if (session.name.toLowerCase() !== req.params.name.toLowerCase() && !sessionUser.admin) {
-            return res.json({ error: 'You cannot edit other users unless you are an admin!' });
+            return res.status(403).json({ error: 'You cannot edit other users unless you are an admin!' });
         }
 
         let user = await getUserData(req.params.name);
@@ -130,7 +128,7 @@ app.put('/api/user/:name', cors(), async (req, res) => {
         if (user) {
             if (user.banned && !sessionUser.admin) return res.status(403).json({ error: { status: 403, code: 'banned', detail: 'You are banned from Itinerary!' } });
             if (!req.params) {
-                return res.json({
+                return res.status(400).json({
                     error: {
                         status: 400,
                         code: 'userAlreadyExists',
@@ -159,7 +157,7 @@ app.put('/api/user/:name', cors(), async (req, res) => {
 
             await Users.updateOne({ name: user.name }, { $set: { 'meta.updatedBy': sessionUser.name, 'meta.updated': now.toISOString() } });
 
-            res.json({ ok: 'User updated!' });
+            res.status(200).json({ ok: 'User updated!' });
         } else {
             if (req.params.name) {
                 // This is an admin trying to update a non-existent user thus we should create that user.
@@ -169,7 +167,7 @@ app.put('/api/user/:name', cors(), async (req, res) => {
                 let scratchData = await scratchResponse.json();
 
                 if (!scratchData.username) {
-                    return res.json({ error: { status: 404, code: 'userNotFound', detail: 'This user could not be found on Scratch.' } });
+                    return res.status(404).json({ error: { status: 404, code: 'userNotFound', detail: 'This user could not be found on Scratch.' } });
                 }
 
                 let now = new Date();
@@ -181,9 +179,9 @@ app.put('/api/user/:name', cors(), async (req, res) => {
                         updatedBy: session.name,
                     },
                 });
-                res.json({ ok: 'User added!' });
+                res.status(200).json({ ok: 'User added!' });
             } else {
-                return res.json({ error: { status: 400, code: 'missingParameters', detail: 'You must enter a username!' } });
+                return res.status(400).json({ error: { status: 400, code: 'missingParameters', detail: 'You must enter a username!' } });
             }
         }
     }
@@ -191,13 +189,13 @@ app.put('/api/user/:name', cors(), async (req, res) => {
 
 app.delete('/api/user/:name', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -211,12 +209,12 @@ app.delete('/api/user/:name', cors(), async (req, res) => {
     let user = await getUserData(req.params.name);
 
     if (!user) {
-        return res.json({ error: "This user could not be deleted because it doesn't exist!" });
+        return res.status(404).json({ error: "This user could not be deleted because it doesn't exist!" });
     }
 
     await Sessions.deleteOne({ name: user.name });
     await Users.deleteOne({ name: user.name });
-    res.json({ ok: 'This user has been successfully deleted!' });
+    res.status(200).json({ ok: 'This user has been successfully deleted!' });
 });
 
 app.get('/api/user/:user/picture', cors(corsOptions), async (req, res) => {
@@ -260,18 +258,18 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
         // Loop through all jams and hide the title and main theme of jams that didn't start yet
         if (bypassMystery) {
             if (!req.headers.authorization) {
-                res.json({ error: 'Authentication needed!' });
+                return res.status(401).json({ error: 'Authentication needed!' });
             } else {
                 let session = findSession(req.headers.authorization);
 
                 if (!session) {
-                    return res.json({ error: 'Invalid auth!' });
+                    return res.status(403).json({ error: 'Invalid auth!' });
                 }
 
                 let sessionUser = await getUserData(session.name);
 
                 if (!sessionUser.admin && !(await sessionUser.isManager(req.params.jam))) {
-                    return res.json({ error: `Only admins and managers can view the details of upcoming jams!` });
+                    return res.status(403).json({ error: `Only admins and managers can view the details of upcoming jams!` });
                 }
             }
         } else {
@@ -299,7 +297,7 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
                 }
             }
         }
-        res.json({ total: jamsCount, jams: jamsList });
+        res.status(200).json({ total: jamsCount, jams: jamsList });
     } else {
         // If we are looking for a specific jam
         let jam = await Jams.findOne({ slug: req.params.jam }).lean();
@@ -308,18 +306,18 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
             // Loop through all jams and hide the title and main theme of jams that didn't start yet
             if (bypassMystery) {
                 if (!req.headers.authorization) {
-                    res.json({ error: 'Authentication needed!' });
+                    res.status(401).json({ error: 'Authentication needed!' });
                 } else {
                     let session = findSession(req.headers.authorization);
 
                     if (!session) {
-                        return res.json({ error: 'Invalid auth!' });
+                        return res.status(403).json({ error: 'Invalid auth!' });
                     }
 
                     let sessionUser = await getUserData(session.name);
 
                     if (!sessionUser.admin && !(await sessionUser.isManager(req.params.jam))) {
-                        return res.json({ error: `Only admins and managers can view the details of upcoming jams!` });
+                        return res.status(403).json({ error: `Only admins and managers can view the details of upcoming jams!` });
                     }
                 }
             } else {
@@ -346,7 +344,7 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
                 }
             }
 
-            return res.json(jam);
+            return res.status(200).json(jam);
         } else {
             return res.status(404).json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
         }
@@ -356,13 +354,13 @@ app.get('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
 app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        res.json({ error: 'You need auth!' });
+        res.status(401).json({ error: 'You need auth!' });
     } else {
         // Check whether the session is valid and the user has admin privileges
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let sessionUser = await getUserData(session.name);
@@ -387,7 +385,7 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
             // Create the new jam using
             Jams.create(record)
                 .then((createdDocument) => {
-                    return res.json({ ok: 'The jam was successfully created!', slug: createdDocument.slug });
+                    return res.status(200).json({ ok: 'The jam was successfully created!', slug: createdDocument.slug });
                 })
                 .catch((e) => {
                     console.log(e);
@@ -454,13 +452,13 @@ app.put('/api/jams/:jam?', cors(corsOptions), async (req, res) => {
 
 app.delete('/api/jams/:jam', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -479,7 +477,7 @@ app.delete('/api/jams/:jam', cors(), async (req, res) => {
     } else {
         return res.status(404).json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
     }
-    res.json({ ok: 'This jam has been successfully deleted!' });
+    res.status(200).json({ ok: 'This jam has been successfully deleted!' });
 });
 
 app.options('/api/jams/:jam/managers/', cors(corsOptions));
@@ -487,19 +485,19 @@ app.options('/api/jams/:jam/managers/', cors(corsOptions));
 app.get('/api/jams/:jam/managers', cors(corsOptions), async (req, res) => {
     let managers = await Managers.find({ jam: req.params.jam });
 
-    return res.json({ managers: managers });
+    return res.status(200).json({ managers: managers });
 });
 
 app.put('/api/jams/:jam/managers/', cors(corsOptions), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        res.json({ error: 'You need auth!' });
+        res.status(401).json({ error: 'You need auth!' });
     } else {
         // Check whether the session is valid and the user has admin privileges
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let sessionUser = await getUserData(session.name);
@@ -528,7 +526,7 @@ app.put('/api/jams/:jam/managers/', cors(corsOptions), async (req, res) => {
         // Add the new manager
         Managers.create(record)
             .then(() => {
-                return res.json({ ok: 'The manager was added to the jam!' });
+                return res.status(200).json({ ok: 'The manager was added to the jam!' });
             })
             .catch((e) => {
                 console.log(e);
@@ -539,13 +537,13 @@ app.put('/api/jams/:jam/managers/', cors(corsOptions), async (req, res) => {
 
 app.delete('/api/jams/:jam/managers/', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -571,12 +569,12 @@ app.options('/api/jams/:jam/user-data/', cors(corsOptions));
 
 app.get('/api/jams/:jam/user-data', cors(corsOptions), async (req, res) => {
     if (!req.headers.authorization) {
-        res.json({ error: 'Authentication needed!' });
+        res.status(401).json({ error: 'Authentication needed!' });
     } else {
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let sessionUser = await getUserData(session.name);
@@ -591,7 +589,7 @@ app.get('/api/jams/:jam/user-data', cors(corsOptions), async (req, res) => {
             hasParticipated = false;
         }
 
-        res.json({ ok: { hasParticipated, manager: isManager } });
+        res.status(200).json({ ok: { hasParticipated, manager: isManager } });
     }
 });
 
@@ -600,7 +598,7 @@ app.options('/api/jams/:jam/projects/:project?', cors(corsOptions));
 app.get('/api/jams/:jam/projects/:project?', cors(), async (req, res) => {
     let jam = await Jams.findOne({ slug: req.params.jam }).lean();
     if (!jam) {
-        return res.json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
+        return res.status(404).json({ error: { status: 404, code: 'jamNotFound', detail: 'The requested jam could not be found.' } });
     }
 
     await computeCommunitySelectedWinner(req.params.jam);
@@ -613,10 +611,10 @@ app.get('/api/jams/:jam/projects/:project?', cors(), async (req, res) => {
 
         if (!limit) {
             // Return all projects
-            res.json(projectsList);
+            res.status(200).json(projectsList);
         } else {
             // Return a maximum of `limit` projects
-            res.json(projectsList.slice(0, limit));
+            res.status(200).json(projectsList.slice(0, limit));
         }
     } else {
         // If we are looking for a specific project
@@ -625,28 +623,36 @@ app.get('/api/jams/:jam/projects/:project?', cors(), async (req, res) => {
             return res.status(404).json({ error: { status: 404, code: 'projectNotFound', detail: 'The requested project could not be found.' } });
         }
 
-        return res.json(project);
+        return res.status(200).json(project);
     }
 });
 
 app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     // Prepare the record and verify whether the project exists
     let record = req.body;
 
     if (!record.project || !record.jam) {
-        return res.json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide both the `project` and `jam` parameters!' } });
+        return res.status(400).json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide both the `project` and `jam` parameters!' } });
+    }
+
+    let jam = await Jams.findOne({ slug: req.params.jam }).lean();
+    if (!jam) return res.status(400).json({ error: { status: 400, code: 'jamNotFound', detail: "The jam you are trying to submit a project to doesn't exist!" } });
+    let today = new Date().toISOString();
+
+    if (!((jam.dates.start && new Date(jam.dates.start).toISOString()) <= today && today < (jam.dates.end && new Date(jam.dates.end).toISOString()))) {
+        return res.status(403).json({ error: { status: 403, code: 'jamNotOpen', detail: 'This jam is not accepting submissions!' } });
     }
 
     let response = await fetch(`https://scratchdb.lefty.one/v3/project/info/${record.project}`, {
@@ -659,7 +665,7 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
 
     // TODO: Distinguish between different types of errors
     if (response.error) {
-        return res.json({ error: { status: 400, code: 'badRequest', detail: "This project probably doesn't exist!" } });
+        return res.status(400).json({ error: { status: 400, code: 'badRequest', detail: "This project probably doesn't exist!" } });
     }
 
     // Check whether the submitter is the owner of the project.
@@ -685,7 +691,7 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
     // Save the submission
     await Projects.create(record)
         .then(() => {
-            return res.json({ ok: 'Your submission was recorded' });
+            return res.status(200).json({ ok: 'Your submission was recorded' });
         })
         .catch((e) => {
             console.log(e);
@@ -695,13 +701,13 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
 
 app.delete('/api/jams/:jam/projects/:project', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     if (!req.params.project) {
@@ -727,7 +733,7 @@ app.delete('/api/jams/:jam/projects/:project', cors(), async (req, res) => {
 
     await computeCommunitySelectedWinner(req.params.jam);
 
-    res.json({ ok: 'Your submission was removed!' });
+    res.status(200).json({ ok: 'Your submission was removed!' });
 });
 
 app.options('/api/jams/:jam/upvotes/:project?', cors(corsOptions));
@@ -738,20 +744,20 @@ app.get('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
 
         // Verify that the `Authorization` header was sent with the request
         if (!req.headers.authorization) {
-            return res.json({ error: 'You need auth!' });
+            return res.status(401).json({ error: 'You need auth!' });
         }
 
         // Check whether the session is valid
         let session = findSession(req.headers.authorization);
 
         if (!session) {
-            return res.json({ error: 'Invalid auth!' });
+            return res.status(403).json({ error: 'Invalid auth!' });
         }
 
         let upvotes = await Upvotes.find({ jam: req.params.jam, 'meta.upvotedBy': session.name });
         let remainingUpvotes = MAX_UPVOTES_PER_JAM - upvotes.length;
 
-        return res.json({ ok: true, upvotes: upvotes, remainingUpvotes: remainingUpvotes });
+        return res.status(200).json({ ok: true, upvotes: upvotes, remainingUpvotes: remainingUpvotes });
     } else {
         // If we are looking for the TOTAL number of upvotes a project received in a specific game jam
         let upvotes = await Upvotes.countDocuments({ jam: req.params.jam, project: req.params.project });
@@ -761,7 +767,7 @@ app.get('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
             let session = findSession(req.headers.authorization);
 
             if (!session) {
-                return res.json({ error: 'Invalid auth!' });
+                return res.status(403).json({ error: 'Invalid auth!' });
             }
 
             if ((await Upvotes.countDocuments({ jam: req.params.jam, project: req.params.project, 'meta.upvotedBy': session.name })) > 0) {
@@ -771,28 +777,28 @@ app.get('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
             extra = { upvoted: upvotedByUser };
         }
 
-        return res.json({ ok: true, count: upvotes, ...extra });
+        return res.status(200).json({ ok: true, count: upvotes, ...extra });
     }
 });
 
 app.put('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     // Prepare the record
     let record = { jam: req.params.jam, project: req.params.project };
 
     if (!record.project || !record.jam) {
-        return res.json({ error: { status: 400, code: 'missingParameters', detail: 'Your request is incomplete!' } });
+        return res.status(400).json({ error: { status: 400, code: 'missingParameters', detail: 'Your request is incomplete!' } });
     }
 
     // Check whether the user is within the upvote limit per game jam
@@ -829,7 +835,7 @@ app.put('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
     // Save the submission
     await Upvotes.create(record)
         .then(() => {
-            return res.json({ ok: 'Your vote was saved' });
+            return res.status(200).json({ ok: 'Your vote was saved' });
         })
         .catch((e) => {
             console.log(e);
@@ -839,13 +845,13 @@ app.put('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
 
 app.delete('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     if (!req.params.project) {
@@ -856,7 +862,7 @@ app.delete('/api/jams/:jam/upvotes/:project?', cors(), async (req, res) => {
     let { deletedCount } = await Upvotes.deleteOne({ project: req.params.project, jam: req.params.jam, 'meta.upvotedBy': session.name });
 
     if (deletedCount > 0) {
-        res.json({ ok: 'Your upvote was removed!' });
+        res.status(200).json({ ok: 'Your upvote was removed!' });
     } else {
         return res.status(404).json({ error: { status: 404, code: 'upvoteNeverCast', detail: 'No upvotes were cast for this project during this jam.' } });
     }
@@ -868,27 +874,27 @@ app.get('/api/jams/:jam/winners/', cors(), async (req, res) => {
     await computeCommunitySelectedWinner(req.params.jam);
     let winners = await Projects.find({ jam: req.params.jam, $or: [{ selected: true }, { selectedByTheCommunity: true }] });
 
-    return res.json({ winners: winners });
+    return res.status(200).json({ winners: winners });
 });
 
 app.put('/api/jams/:jam/winners/', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     // Prepare the record and verify whether the project exists
     let record = req.body;
 
     if (!record.project) {
-        return res.json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide the `project` parameter!' } });
+        return res.status(400).json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide the `project` parameter!' } });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -901,27 +907,27 @@ app.put('/api/jams/:jam/winners/', cors(), async (req, res) => {
 
     await computeCommunitySelectedWinner(req.params.jam);
 
-    return res.json({ ok: 'The requested project was selected as the winner.' });
+    return res.status(200).json({ ok: 'The requested project was selected as the winner.' });
 });
 
 app.delete('/api/jams/:jam/winners/', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     // Prepare the record and verify whether the project exists
     let record = req.body;
 
     if (!record.project) {
-        return res.json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide the `project` parameter!' } });
+        return res.status(400).json({ error: { status: 400, code: 'missingParameters', detail: 'You must provide the `project` parameter!' } });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -933,7 +939,7 @@ app.delete('/api/jams/:jam/winners/', cors(), async (req, res) => {
 
     await computeCommunitySelectedWinner(req.params.jam);
 
-    return res.json({ ok: 'The requested project was stripped of the winner status.' });
+    return res.status(200).json({ ok: 'The requested project was stripped of the winner status.' });
 });
 
 app.options('/api/jams/:jam/feature/', cors(corsOptions));
@@ -941,14 +947,14 @@ app.options('/api/jams/:jam/feature/', cors(corsOptions));
 app.put('/api/jams/:jam/feature/', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -958,20 +964,20 @@ app.put('/api/jams/:jam/feature/', cors(), async (req, res) => {
 
     await Jams.updateOne({ slug: req.params.jam }, { featured: true });
 
-    return res.json({ ok: 'The requested jam was featured.' });
+    return res.status(200).json({ ok: 'The requested jam was featured.' });
 });
 
 app.delete('/api/jams/:jam/feature/', cors(), async (req, res) => {
     // Verify that the `Authorization` header was sent with the request
     if (!req.headers.authorization) {
-        return res.json({ error: 'You need auth!' });
+        return res.status(401).json({ error: 'You need auth!' });
     }
 
     // Check whether the session is valid
     let session = findSession(req.headers.authorization);
 
     if (!session) {
-        return res.json({ error: 'Invalid auth!' });
+        return res.status(403).json({ error: 'Invalid auth!' });
     }
 
     let sessionUser = await getUserData(session.name);
@@ -981,7 +987,7 @@ app.delete('/api/jams/:jam/feature/', cors(), async (req, res) => {
 
     await Jams.updateOne({ slug: req.params.jam }, { featured: false });
 
-    return res.json({ ok: 'The requested jam was unfeatured.' });
+    return res.status(200).json({ ok: 'The requested jam was unfeatured.' });
 });
 
 async function computeCommunitySelectedWinner(jam) {
@@ -1089,7 +1095,7 @@ app.get('/auth/handle', async (req, res) => {
         let scratchData = await scratchResponse.json();
 
         if (!scratchData.username) {
-            return res.json({ error: { status: 404, code: 'userNotFound', detail: 'This user could not be found on Scratch.' } });
+            return res.status(404).json({ error: { status: 404, code: 'userNotFound', detail: 'This user could not be found on Scratch.' } });
         }
 
         let foundUser = await getUserData(scratchData.username);
@@ -1125,14 +1131,14 @@ app.get('/auth/info', cors(corsOptions), async (req, res) => {
     if (req.query.token) {
         let session = findSessionByOneTimeToken(req.query.token);
         if (session) {
-            res.json({ name: session.name, token: session.token });
+            res.status(200).json({ name: session.name, token: session.token });
             await Sessions.updateOne({ oneTimeToken: req.query.token }, { $set: { oneTimeToken: null } });
             session.oneTimeToken = null;
         } else {
-            res.json({ error: 'No session found! Invalid or expired one time token.' });
+            res.status(404).json({ error: 'No session found! Invalid or expired one time token.' });
         }
     } else {
-        res.json({ error: 'Requires query parameter token' });
+        res.status(400).json({ error: 'Requires query parameter token' });
     }
 });
 
@@ -1144,12 +1150,12 @@ app.post('/auth/remove', cors(corsOptions), async (req, res) => {
         if (session) {
             let name = session.name;
             removeSession(req.query.token);
-            res.json({ ok: `Removed session for ${name}` });
+            res.status(200).json({ ok: `Removed session for ${name}` });
         } else {
-            res.json({ error: 'The session from the token is already invalid/expired!' });
+            res.status(400).json({ error: 'The session from the token is already invalid/expired!' });
         }
     } else {
-        res.json({ error: 'Requires query parameter token' });
+        res.status(400).json({ error: 'Requires query parameter token' });
     }
 });
 
@@ -1157,7 +1163,7 @@ app.options('/auth/me', cors(corsOptions));
 
 app.get('/auth/me', cors(corsOptions), async (req, res) => {
     if (!req.headers.authorization) {
-        res.json({ error: 'you need auth' });
+        res.status(401).json({ error: 'you need auth' });
     } else {
         let session = findSession(req.headers.authorization);
         if (!session) {
@@ -1167,7 +1173,7 @@ app.get('/auth/me', cors(corsOptions), async (req, res) => {
         if (user.banned) {
             res.status(403).json({ error: { status: 403, code: 'banned', detail: 'You are banned from Itinerary!', name: user.name } });
         }
-        user ? res.json(user) : res.json({ error: "no user found.. this shouldn't happen" });
+        user ? res.status(200).json(user) : res.status(404).json({ error: "no user found.. this shouldn't happen" });
     }
 });
 /* --------------- */
