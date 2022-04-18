@@ -1071,7 +1071,7 @@ app.get('/auth/begin', (req, res) => {
         redirect = `${process.env.BACKEND_URL.replace(/(^\w+:|^)\/\//, '')}/auth/handle`;
     }
     redirect = Buffer.from(redirect).toString('base64');
-    res.redirect(`https://auth.itinerary.eu.org/auth/?redirect=${redirect}`);
+    res.redirect(`https://auth.itinerary.eu.org/auth/?redirect=${redirect}&name=Itinerary`);
 });
 
 app.get('/auth/handle', async (req, res) => {
