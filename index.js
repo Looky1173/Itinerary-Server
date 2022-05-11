@@ -1077,14 +1077,14 @@ app.get('/auth/begin', (req, res) => {
         redirect = `${process.env.BACKEND_URL.replace(/(^\w+:|^)\/\//, '')}/auth/handle`;
     }
     redirect = Buffer.from(redirect).toString('base64');
-    res.redirect(`https://fluffyscratch.hampton.pw/auth/getKeys/v2?redirect=${redirect}`);
+    res.redirect(`https://auth.itinerary.eu.org/auth/?redirect=${redirect}&name=Itinerary`);
 });
 
 app.get('/auth/handle', async (req, res) => {
     // The user is back from Hampton's authentication service
     const private = req.query.privateCode;
 
-    let authResponse = await fetch('https://fluffyscratch.hampton.pw/auth/verify/v2/' + private).catch((e) => {
+    let authResponse = await fetch('https://auth.itinerary.eu.org/api/auth/verifyToken?privateCode=' + private).catch((e) => {
         console.log(e);
         return res.redirect(`${frontendURL}/login?error=${1}`);
     });
