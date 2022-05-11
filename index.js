@@ -655,7 +655,13 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
         return res.status(403).json({ error: { status: 403, code: 'jamNotOpen', detail: 'This jam is not accepting submissions!' } });
     }
 
-    let response = await fetch(`https://scratchdb.lefty.one/v3/project/info/${record.project}`, {
+    /* let response = await fetch(`https://scratchdb.lefty.one/v3/project/info/${record.project}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    }); */
+    let response = await fetch(`https://api.scratch.mit.edu/projects/${record.project}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -664,12 +670,12 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
     response = await response.json();
 
     // TODO: Distinguish between different types of errors
-    if (response.error) {
-        return res.status(400).json({ error: { status: 400, code: 'badRequest', detail: "This project probably doesn't exist!" } });
+    if (response.code) {
+        return res.status(400).json({ error: { status: 400, code: 'badRequest', detail: "This project probably doesn't exist OR it is not shared!" } });
     }
 
     // Check whether the submitter is the owner of the project.
-    if (response.username !== session.name) {
+    if (response?.author?.username !== session.name) {
         return res.status(403).json({ error: { status: 403, code: 'illegalRequest', detail: 'You can only submit projects YOU own!' } });
     }
 
