@@ -1094,7 +1094,7 @@ app.get('/auth/handle', async (req, res) => {
     if (authData.valid) {
         // Get the proper case of the username instead of URL case
 
-        let scratchResponse = await fetch(`https://api.scratch.mit.edu/users/${authData.username}/`).catch((e) => {
+        let scratchResponse = await fetch(`https://api.allorigins.win/raw?url=https://api.scratch.mit.edu/users/${authData.username}?cache=${Date.now()}`).catch((e) => {
             console.log(e);
             return res.redirect(`${frontendURL}/login?error=${1}`);
         });
