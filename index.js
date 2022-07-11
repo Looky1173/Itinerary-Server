@@ -661,7 +661,7 @@ app.put('/api/jams/:jam/projects/', cors(), async (req, res) => {
             'Content-Type': 'application/json',
         },
     }); */
-    let response = await fetch(`https://api.scratch.mit.edu/projects/${record.project}`, {
+    let response = await fetch(`https://api.allorigins.win/raw?url=https://api.scratch.mit.edu/projects/${record.project}?cache=${Date.now()}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
